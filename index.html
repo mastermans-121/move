@@ -147,6 +147,10 @@ h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
 .sheet p{margin:0 0 14px;color:var(--dim);font-size:13.5px}
 .prog{font-size:13px;color:var(--dim);margin-top:10px}
 .rowbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.find{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:8px 12px;color:var(--text);font-size:13.5px;-webkit-appearance:none}
+.find::placeholder{color:var(--faint)}
+.hint{color:var(--faint);font-size:12.5px;margin:-4px 0 12px}
 </style>
 </head>
 <body>
@@ -184,8 +188,10 @@ h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
     <h1 id="catName"></h1>
     <p class="lede" id="catLede"></p>
     <div class="rowbtns" style="margin-bottom:14px">
-      <button class="btn sm ghost" id="editBtn">Edit clips</button>
+      <button class="btn sm ghost" id="editBtn">Rename / remove</button>
+      <input id="find" class="find" type="search" placeholder="Find a clip" autocomplete="off">
     </div>
+    <div class="hint" id="editHint" style="display:none"></div>
     <div class="grid" id="grid"></div>
   </section>
 </main>
@@ -390,6 +396,7 @@ function openCat(key){
   document.getElementById('viewCat').classList.remove('hidden');
   document.getElementById('catName').textContent = CATS[key].name;
   document.getElementById('catLede').textContent = CATS[key].lede;
+  document.getElementById('find').value = '';
   renderGrid(); window.scrollTo(0,0);
 }
 function goHome(){
@@ -399,8 +406,13 @@ function goHome(){
 }
 function renderGrid(){
   const g = document.getElementById('grid'); g.innerHTML='';
-  const list = CLIPS.filter(c=>c.category===curCat);
+  const q = (document.getElementById('find').value || '').trim().toLowerCase();
+  let list = CLIPS.filter(c=>c.category===curCat);
+  if(q) list = list.filter(c=>c.name.toLowerCase().includes(q));
   const doneIds = (S.sessions[today()]||{}).ids || [];
+  const hint = document.getElementById('editHint');
+  hint.textContent = editing ? 'Tap a clip to rename it. Tap the red cross to remove it from the app.' : '';
+  hint.style.display = editing ? 'block' : 'none';
   list.forEach(c=>{
     const i = queue.findIndex(q=>q.id===c.id);
     const b = document.createElement('button');
@@ -409,10 +421,16 @@ function renderGrid(){
         <span class="badge">${editing?'✕':(i>=0?i+1:'')}</span><span class="tick">✓</span></span>
       <span class="clip-body"><span class="clip-name">${esc(c.name)}</span>
       <span class="clip-dur">${Math.round(c.duration)}s</span></span>`;
-    if(editing) b.querySelector('.badge').style.cssText='opacity:1;transform:scale(1);background:var(--bad);color:#fff';
-    b.onclick = ()=> editing ? removeClip(c) : toggle(c);
+    if(editing){
+      const del = b.querySelector('.badge');
+      del.textContent = '\u2715';
+      del.style.cssText = 'opacity:1;transform:scale(1);background:var(--bad);color:#fff';
+      del.onclick = e => { e.stopPropagation(); removeClip(c); };
+    }
+    b.onclick = ()=> editing ? renameClip(c) : toggle(c);
     g.appendChild(b);
   });
+  if(q) return;
   const add = document.createElement('button');
   add.className = 'addtile';
   add.innerHTML = '<span><b>+</b>Add clips<br><span style="font-size:12px;color:var(--faint)">from your photos</span></span>';
@@ -425,6 +443,16 @@ function toggle(c){
   const i = queue.findIndex(q=>q.id===c.id);
   if(i>=0) queue.splice(i,1); else queue.push(c);
   renderGrid(); paintQueue();
+}
+async function renameClip(c){
+  const n = prompt('Name this clip', c.name);
+  if(n === null) return;
+  const t = n.trim();
+  if(!t || t === c.name) return;
+  c.name = t.slice(0,42);
+  await dbPut(c);
+  CLIPS = await dbAll();
+  renderGrid();
 }
 async function removeClip(c){
   if(!confirm('Remove "'+c.name+'" from the app? The video stays in your Photos.')) return;
@@ -471,10 +499,19 @@ document.getElementById('picker').onchange = async e=>{
   document.getElementById('sheetText').textContent = 'Done.';
   if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
 };
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function tidy(n){
-  n = n.replace(/\.[A-Za-z0-9]+$/,'').replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
-  if(/^(IMG|VID|MOV|ScreenRecording)/i.test(n)) n = 'Clip ' + (CLIPS.length+1);
-  return n.slice(0,42);
+  const base = n.replace(/\.[A-Za-z0-9]+$/,'');
+  // 11-14-2025_23-12-19_1  or  ScreenRecording_11-14-2025 23-12-19_1
+  const m = base.match(/(\d{2})-(\d{2})-(\d{4})[ _](\d{2})-(\d{2})/);
+  if(m){
+    let h = +m[4], ap = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    return `${MON[+m[1]-1]} ${+m[2]}, ${h}:${m[5]}${ap}`;
+  }
+  let t = base.replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
+  if(/^(IMG|VID|MOV)/i.test(t)) t = 'Clip ' + (CLIPS.length+1);
+  return t.slice(0,42);
 }
 function readVideo(file){
   return new Promise((res,rej)=>{
@@ -577,6 +614,7 @@ document.getElementById('pPrev').onclick = ()=>playAt(Math.max(0,pIdx-1));
 document.getElementById('pClose').onclick = ()=>closePlayer(false);
 document.getElementById('sheetClose').onclick = ()=>document.getElementById('sheet').classList.add('hidden');
 document.getElementById('editBtn').onclick = ()=>{ editing=!editing; renderGrid(); paintQueue(); };
+document.getElementById('find').oninput = ()=>renderGrid();
 
 if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
