@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1013">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Move">
+<link rel="manifest" href="manifest.json">
+<title>Move</title>
+<style>
+:root{
+  --bg:#0e1013; --card:#171a1f; --card2:#1d2128; --line:#262b33;
+  --text:#e9ecf1; --dim:#9aa3b0; --faint:#6b7483;
+  --accent:#f0a33c; --accent2:#ff6b35; --good:#4ade80; --bad:#f87171;
+  --r:16px; --gut:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  padding-bottom:env(safe-area-inset-bottom);overscroll-behavior-y:contain}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.wrap{max-width:720px;margin:0 auto;padding:0 var(--gut)}
+
+/* streak header */
+.topbar{position:sticky;top:0;z-index:20;background:rgba(14,16,19,.86);
+  backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);
+  padding:calc(env(safe-area-inset-top) + 10px) var(--gut) 10px}
+.streak{display:flex;align-items:center;gap:10px}
+.flamewrap{position:relative;width:34px;height:34px;flex:none;display:grid;place-items:center}
+.flame{width:26px;height:26px;display:block;position:relative;z-index:2;
+  filter:drop-shadow(0 0 7px rgba(240,163,60,.55))}
+.cold .flame{filter:none;opacity:.42}
+.streak-n{font-size:21px;font-weight:700;letter-spacing:-.4px;line-height:1}
+.streak-unit{font-size:12px;color:var(--dim);margin-left:3px;font-weight:500}
+.streak-sub{font-size:12.5px;color:var(--dim);line-height:1.35}
+.streak-sub .good{color:var(--good)}
+.streak-label{font-size:14px;color:var(--dim)}
+.sparks{position:absolute;inset:0;pointer-events:none;z-index:1}
+.sparks i{position:absolute;left:50%;bottom:9px;width:3px;height:3px;border-radius:50%;
+  background:var(--accent);opacity:0;animation:rise var(--dur) ease-out infinite;animation-delay:var(--del)}
+.sparks.weld i{width:2px;height:2px;background:#fff6dd;box-shadow:0 0 5px var(--accent2)}
+@keyframes rise{0%{opacity:0;transform:translate(0,0) scale(.6)}12%{opacity:1}
+  100%{opacity:0;transform:translate(var(--dx),calc(var(--reach) * -1)) scale(.2)}}
+.nova{position:absolute;inset:-12px;z-index:0;pointer-events:none}
+.nova i{position:absolute;inset:0;border-radius:50%}
+.nova-haze{background:radial-gradient(circle,rgba(255,107,53,.34),transparent 62%);animation:breathe 3.4s ease-in-out infinite}
+.nova-ring{border:1px solid rgba(240,163,60,.5);animation:ring 2.8s ease-out infinite}
+.nova-ring.late{animation-delay:1.4s}
+.nova-core{background:radial-gradient(circle,rgba(255,236,190,.5),transparent 45%);animation:breathe 2.1s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.45;transform:scale(.92)}50%{opacity:.95;transform:scale(1.06)}}
+@keyframes ring{0%{opacity:.8;transform:scale(.5)}100%{opacity:0;transform:scale(1.35)}}
+@media (prefers-reduced-motion:reduce){.sparks,.nova{display:none}}
+
+h1{font-size:27px;letter-spacing:-.7px;margin:22px 0 6px;font-weight:700}
+h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
+.lede{color:var(--dim);margin:0 0 18px;font-size:14.5px}
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-size:14px;margin:16px 0 2px;padding:6px 0}
+.hidden{display:none !important}
+
+.tiles{display:grid;gap:12px;margin-bottom:8px}
+.tile{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;
+  transition:transform .12s ease,background .15s ease}
+.tile:active{transform:scale(.985);background:var(--card2)}
+.tile-icon{width:44px;height:44px;border-radius:12px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(145deg,rgba(240,163,60,.2),rgba(255,107,53,.1));border:1px solid rgba(240,163,60,.25)}
+.tile-icon svg{width:22px;height:22px;stroke:var(--accent)}
+.tile-name{display:block;font-weight:650;font-size:16.5px;letter-spacing:-.2px}
+.tile-meta{display:block;font-size:13px;color:var(--faint);margin-top:2px}
+.chev{margin-left:auto;color:var(--faint);font-size:20px;line-height:1}
+
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px;padding-bottom:110px}
+@media(min-width:560px){.grid{grid-template-columns:repeat(3,1fr)}}
+.clip{position:relative;border-radius:13px;overflow:hidden;background:var(--card);
+  border:1px solid var(--line);text-align:left;padding:0;transition:transform .12s ease}
+.clip:active{transform:scale(.97)}
+.clip.on{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+.thumb{display:block;position:relative;aspect-ratio:1/1;background:#0a0c0f;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.clip-body{display:block;padding:9px 10px 11px}
+.clip-name{display:block;font-size:13.5px;font-weight:600;line-height:1.3;letter-spacing:-.1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clip-dur{display:block;font-size:11.5px;color:var(--faint);margin-top:3px}
+.badge{position:absolute;top:7px;right:7px;width:25px;height:25px;border-radius:50%;
+  display:grid;place-items:center;font-size:12.5px;font-weight:700;background:var(--accent);color:#1a1205;
+  opacity:0;transform:scale(.5);transition:opacity .16s ease,transform .16s cubic-bezier(.34,1.56,.64,1)}
+.clip.on .badge{opacity:1;transform:scale(1)}
+.tick{position:absolute;top:7px;left:7px;width:22px;height:22px;border-radius:50%;
+  background:rgba(74,222,128,.92);display:none;place-items:center;color:#06240f;font-size:12px;font-weight:800}
+.clip.didtoday .tick{display:grid}
+.addtile{display:grid;place-items:center;aspect-ratio:1/1.22;border:1.5px dashed var(--line);
+  border-radius:13px;color:var(--dim);font-size:14px;text-align:center;padding:10px;background:transparent}
+.addtile b{display:block;font-size:28px;font-weight:300;color:var(--accent);line-height:1;margin-bottom:6px}
+
+.queuebar{position:fixed;left:0;right:0;bottom:0;z-index:30;
+  padding:12px var(--gut) calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to top,var(--bg) 62%,rgba(14,16,19,0));
+  transform:translateY(130%);transition:transform .26s cubic-bezier(.3,1.1,.5,1)}
+.queuebar.up{transform:none}
+.queuebar-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:12px;
+  background:var(--card2);border:1px solid var(--line);border-radius:15px;padding:11px 12px 11px 16px}
+.q-count{font-weight:650;font-size:15px}
+.q-min{font-size:12.5px;color:var(--dim);margin-top:1px}
+.btn{background:var(--accent);color:#1a1205;font-weight:700;border-radius:11px;padding:12px 20px;font-size:15px}
+.btn:active{opacity:.82}
+.btn.ghost{background:var(--card2);color:var(--text);border:1px solid var(--line);font-weight:600}
+.btn.sm{padding:8px 14px;font-size:13.5px;border-radius:9px}
+
+.player{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column}
+.p-video{flex:1;min-height:0;position:relative;background:#000}
+.p-video video{width:100%;height:100%;object-fit:contain;display:block}
+.p-top{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 12px) 16px 28px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.72),transparent);display:flex;align-items:center;gap:12px}
+.p-pos{font-size:13px;color:#cfd6e0;font-weight:600}
+.p-x{margin-left:auto;font-size:15px;color:#cfd6e0;padding:4px 8px}
+.p-panel{background:var(--bg);border-top:1px solid var(--line);padding:16px var(--gut) calc(18px + env(safe-area-inset-bottom))}
+.p-name{font-size:19px;font-weight:680;letter-spacing:-.3px}
+.p-cue{color:var(--dim);font-size:14px;margin-top:5px;min-height:21px}
+.p-row{display:flex;gap:10px;margin-top:15px}
+.p-row .btn{flex:1}
+
+.sessions{display:grid;gap:8px}
+.srow{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;font-size:14px}
+.srow .d{color:var(--faint);font-size:12.5px;margin-top:2px}
+.empty{color:var(--faint);font-size:14px;padding:18px 0}
+.toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,20px);
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 17px;font-size:14px;
+  opacity:0;transition:all .25s ease;z-index:60;pointer-events:none;max-width:88vw;text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.done-note{background:rgba(74,222,128,.09);border:1px solid rgba(74,222,128,.28);border-radius:12px;
+  padding:13px 15px;font-size:14px;color:#bdf0cf;margin:4px 0 16px}
+.diag{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;
+  font-size:12.5px;color:var(--dim);margin-top:10px;line-height:1.7}
+.diag b{color:var(--text);font-weight:600}
+.diag .ok{color:var(--good)} .diag .no{color:var(--bad)}
+.bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin:7px 0 3px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.sheet{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:flex;align-items:flex-end}
+.sheet-in{background:var(--card2);width:100%;border-radius:18px 18px 0 0;border-top:1px solid var(--line);
+  padding:18px var(--gut) calc(20px + env(safe-area-inset-bottom));max-height:80vh;overflow:auto}
+.sheet h3{margin:0 0 4px;font-size:18px}
+.sheet p{margin:0 0 14px;color:var(--dim);font-size:13.5px}
+.prog{font-size:13px;color:var(--dim);margin-top:10px}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="streak" id="streakBox">
+    <div class="flamewrap">
+      <svg class="flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+        <path d="M12 2.5c.6 3.1 2.4 4.3 3.9 6 1.3 1.5 2.1 3 2.1 5a6 6 0 0 1-12 0c0-1.6.5-2.7 1.3-3.8.3 1 .9 1.7 1.8 2 .2-3 1.4-5.5 2.9-9.2z"/>
+      </svg>
+      <span class="sparks" id="sparks" aria-hidden="true"></span>
+      <span class="nova hidden" id="nova" aria-hidden="true">
+        <i class="nova-haze"></i><i class="nova-ring"></i><i class="nova-ring late"></i><i class="nova-core"></i>
+      </span>
+    </div>
+    <div id="streakText"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="viewHome">
+    <h1>Good morning</h1>
+    <p class="lede" id="homeLede">Pick what the body is asking for.</p>
+    <div id="doneNote"></div>
+    <div class="tiles" id="tiles"></div>
+    <h2>Recent</h2>
+    <div class="sessions" id="recent"></div>
+    <h2>Library</h2>
+    <div class="diag" id="diag">checking…</div>
+  </section>
+
+  <section id="viewCat" class="hidden">
+    <button class="back" id="backBtn">‹ Categories</button>
+    <h1 id="catName"></h1>
+    <p class="lede" id="catLede"></p>
+    <div class="rowbtns" style="margin-bottom:14px">
+      <button class="btn sm ghost" id="editBtn">Edit clips</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<div class="queuebar" id="queuebar">
+  <div class="queuebar-inner">
+    <div>
+      <div class="q-count" id="qCount">0 clips</div>
+      <div class="q-min" id="qMin">—</div>
+    </div>
+    <button class="btn" style="margin-left:auto" id="startBtn">Start</button>
+  </div>
+</div>
+
+<div class="player hidden" id="player">
+  <div class="p-video">
+    <video id="vid" playsinline webkit-playsinline loop></video>
+    <div class="p-top">
+      <span class="p-pos" id="pPos"></span>
+      <button class="p-x" id="pClose">Close</button>
+    </div>
+  </div>
+  <div class="p-panel">
+    <div class="p-name" id="pName"></div>
+    <div class="p-cue" id="pCue"></div>
+    <div class="p-row">
+      <button class="btn ghost" id="pPrev">Back</button>
+      <button class="btn" id="pNext">Done ›</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet hidden" id="sheet">
+  <div class="sheet-in">
+    <h3 id="sheetTitle">Adding clips</h3>
+    <p id="sheetText">Reading the videos you picked…</p>
+    <div class="bar"><i id="sheetBar" style="width:0%"></i></div>
+    <div class="prog" id="sheetProg"></div>
+    <div class="rowbtns"><button class="btn ghost sm" id="sheetClose">Close</button></div>
+  </div>
+</div>
+
+<input type="file" id="picker" accept="video/*" multiple class="hidden">
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== constants ===================== */
+const LS = 'mm.v2';
+const CATS = {
+  stretching:{name:'Stretching & mobility', lede:'Open the hips, the spine, the shoulders.',
+    icon:'<path d="M12 4v7m0 0-3.5 5M12 11l3.5 5M5 8h14"/><circle cx="12" cy="2.6" r="1.5"/>'},
+  kettlebell:{name:'Kettlebell', lede:'Hinge, press, carry. Pick two or three.',
+    icon:'<path d="M9 6a3 3 0 0 1 6 0c0 1.4-.8 2-1.2 2.4M12 8.4c3.3 0 5.5 2.6 5.5 6S15.3 20 12 20s-5.5-2.2-5.5-5.6 2.2-6 5.5-6Z"/>'},
+  hiit:{name:'HIIT & circuits', lede:'Burpees and short bursts. Get the heart up.',
+    icon:'<path d="M13 2 4.5 13H11l-1 9 9-11.5H12.5L13 2Z"/>'}
+};
+const HEAT = [{d:6,n:3,dur:[2.2,3],reach:[16,22],spread:6},
+              {d:8,n:5,dur:[1.5,2.2],reach:[20,28],spread:9},
+              {d:10,n:8,dur:[.9,1.4],reach:[22,32],spread:12},
+              {d:12,n:12,dur:[.75,1.15],reach:[26,38],spread:15},
+              {d:14,n:16,dur:[.35,.7],reach:[18,34],spread:80,weld:true}];
+const NOVA_AT = 16;
+
+let S = loadState(), CLIPS = [], queue = [], curCat = null, pIdx = 0, editing = false, curURL = null;
+
+/* ===================== IndexedDB ===================== */
+let DB = null;
+function db(){
+  if(DB) return Promise.resolve(DB);
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open('move', 1);
+    r.onupgradeneeded = e=>{
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('clips')){
+        const s = d.createObjectStore('clips', {keyPath:'id'});
+        s.createIndex('category','category');
+      }
+    };
+    r.onsuccess = ()=>{ DB = r.result; res(DB); };
+    r.onerror = ()=>rej(r.error);
+  });
+}
+function tx(mode){ return db().then(d=>d.transaction('clips', mode).objectStore('clips')); }
+function dbAll(){ return tx('readonly').then(s=>new Promise((res,rej)=>{
+  const r = s.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); })); }
+function dbPut(o){ return tx('readwrite').then(s=>new Promise((res,rej)=>{
+  const r = s.put(o); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); })); }
+function dbDel(id){ return tx('readwrite').then(s=>new Promise((res,rej)=>{
+  const r = s.delete(id); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); })); }
+
+/* ===================== small state (streak, sessions) ===================== */
+function loadState(){
+  try{ const r = JSON.parse(localStorage.getItem(LS)); if(r && r.sessions) return r; }catch(e){}
+  return {sessions:{}, best:0, pending:[]};
+}
+function save(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function shift(ds,n){ const [y,m,d]=ds.split('-').map(Number); const t=new Date(y,m-1,d+n);
+  return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+function streak(){ let n=0,d=today(); if(!S.sessions[d]) d=shift(d,-1);
+  while(S.sessions[d]){ n++; d=shift(d,-1); } return n; }
+function mins(list){ return Math.max(1, Math.round(list.reduce((a,c)=>a+(c.duration||30),0)/60)); }
+
+/* ===================== streak header ===================== */
+function heatFor(n){ let h=null; for(const t of HEAT) if(n>=t.d) h=t; return h; }
+function rnd(seed,i){ const x=Math.sin(seed*91.7+i*271.3)*43758.5453; return x-Math.floor(x); }
+function paintStreak(){
+  const n = streak(), best = Math.max(S.best||0, n);
+  if(best>(S.best||0)){ S.best=best; save(); }
+  const doneToday = !!S.sessions[today()];
+  document.getElementById('streakBox').className = 'streak' + (doneToday?'':' cold');
+  const sp = document.getElementById('sparks'); sp.innerHTML=''; sp.className='sparks';
+  const h = doneToday ? heatFor(n) : null;
+  if(h){
+    if(h.weld) sp.classList.add('weld');
+    for(let i=0;i<h.n;i++){
+      const e=document.createElement('i');
+      const dur=h.dur[0]+rnd(n,i)*(h.dur[1]-h.dur[0]);
+      const reach=h.reach[0]+rnd(n,i+50)*(h.reach[1]-h.reach[0]);
+      const dx=(rnd(n,i+99)-.5)*h.spread;
+      e.style.cssText=`--dur:${dur.toFixed(2)}s;--del:${(rnd(n,i+7)*dur).toFixed(2)}s;--reach:${reach.toFixed(0)}px;--dx:${dx.toFixed(1)}px`;
+      sp.appendChild(e);
+    }
+  }
+  document.getElementById('nova').classList.toggle('hidden', !(doneToday && n>=NOVA_AT));
+  const t = document.getElementById('streakText');
+  if(n===0 && best===0){ t.innerHTML='<span class="streak-label">Start your streak today</span>'; return; }
+  let sub;
+  if(doneToday) sub = (n>1 && n>=best) ? '<span class="good">Your best run yet</span>' : 'Today done';
+  else if(n>0) sub = 'Keep it going today';
+  else sub = 'New streak starts today';
+  t.innerHTML = `<div><span class="streak-n">${n}</span><span class="streak-unit">day${n===1?'':'s'}</span></div>
+                 <div class="streak-sub">${sub}${best>n?` · best ${best}`:''}</div>`;
+}
+
+/* ===================== home ===================== */
+function renderHome(){
+  const done = S.sessions[today()];
+  document.getElementById('doneNote').innerHTML = done
+    ? `<div class="done-note">Done today — ${done.clips} clip${done.clips===1?'':'s'}, ${done.mins} min. Anything more is a bonus.</div>` : '';
+  document.getElementById('homeLede').textContent = done
+    ? 'Already moved today. Go again if you want.' : 'Pick what the body is asking for.';
+  const tiles = document.getElementById('tiles'); tiles.innerHTML='';
+  for(const [key,c] of Object.entries(CATS)){
+    const n = CLIPS.filter(x=>x.category===key).length;
+    const b = document.createElement('button'); b.className='tile';
+    b.innerHTML = `<span class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
+      <span><span class="tile-name">${c.name}</span><span class="tile-meta">${n?n+' clip'+(n===1?'':'s'):'empty — add clips'}</span></span>
+      <span class="chev">›</span>`;
+    b.onclick = ()=>openCat(key);
+    tiles.appendChild(b);
+  }
+  const days = Object.keys(S.sessions).sort().reverse().slice(0,5);
+  const r = document.getElementById('recent');
+  r.innerHTML = days.length ? '' : '<div class="empty">Nothing logged yet. Today can be the first.</div>';
+  days.forEach(d=>{
+    const s=S.sessions[d], row=document.createElement('div'); row.className='srow';
+    const label = d===today() ? 'Today' : (d===shift(today(),-1) ? 'Yesterday'
+      : new Date(d+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}));
+    row.innerHTML = `<div><div>${label}</div><div class="d">${(s.cats||[]).map(c=>CATS[c]?CATS[c].name:c).join(' · ')||'Session'}</div></div>
+      <div style="margin-left:auto;text-align:right"><div>${s.clips} clip${s.clips===1?'':'s'}</div><div class="d">${s.mins} min</div></div>`;
+    r.appendChild(row);
+  });
+  renderDiag();
+}
+
+async function renderDiag(){
+  const el = document.getElementById('diag');
+  const bytes = CLIPS.reduce((a,c)=>a+(c.size||0),0);
+  const standalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  let quota = 0, usage = 0, persisted = null;
+  try{
+    if(navigator.storage && navigator.storage.estimate){
+      const e = await navigator.storage.estimate(); quota = e.quota||0; usage = e.usage||0;
+    }
+    if(navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted();
+  }catch(e){}
+  const gb = n => n >= 1073741824 ? (n/1073741824).toFixed(2)+' GB' : (n/1048576).toFixed(0)+' MB';
+  const pct = quota ? Math.min(100, usage/quota*100) : 0;
+  el.innerHTML =
+    `<b>${CLIPS.length}</b> clips on this phone · <b>${gb(bytes)}</b> of video` +
+    (quota ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+       using ${gb(usage)} of about ${gb(quota)} available` : '<br>storage size unknown on this browser') +
+    `<br>home screen app: <span class="${standalone?'ok':'no'}">${standalone?'yes':'no — open from the home screen icon'}</span>` +
+    `<br>storage protected from cleanup: <span class="${persisted?'ok':'no'}">${persisted===null?'unknown':(persisted?'yes':'not yet')}</span>` +
+    (CLIPS.length ? `<div class="rowbtns"><button class="btn sm ghost" id="protectBtn">Ask iOS to protect it</button></div>` : '');
+  const pb = document.getElementById('protectBtn');
+  if(pb) pb.onclick = async ()=>{
+    try{ const ok = await navigator.storage.persist();
+      toast(ok ? 'Protected. iOS will keep the clips.' : 'iOS said no for now — try again after a few days of use.');
+    }catch(e){ toast('Not supported on this browser.'); }
+    renderDiag();
+  };
+}
+
+/* ===================== category + grid ===================== */
+function openCat(key){
+  curCat = key; editing = false;
+  document.getElementById('viewHome').classList.add('hidden');
+  document.getElementById('viewCat').classList.remove('hidden');
+  document.getElementById('catName').textContent = CATS[key].name;
+  document.getElementById('catLede').textContent = CATS[key].lede;
+  renderGrid(); window.scrollTo(0,0);
+}
+function goHome(){
+  document.getElementById('viewCat').classList.add('hidden');
+  document.getElementById('viewHome').classList.remove('hidden');
+  renderHome(); paintStreak(); window.scrollTo(0,0);
+}
+function renderGrid(){
+  const g = document.getElementById('grid'); g.innerHTML='';
+  const list = CLIPS.filter(c=>c.category===curCat);
+  const doneIds = (S.sessions[today()]||{}).ids || [];
+  list.forEach(c=>{
+    const i = queue.findIndex(q=>q.id===c.id);
+    const b = document.createElement('button');
+    b.className = 'clip' + (i>=0?' on':'') + (doneIds.includes(c.id)?' didtoday':'');
+    b.innerHTML = `<span class="thumb"><img loading="lazy" src="${c.poster||''}" alt="">
+        <span class="badge">${editing?'✕':(i>=0?i+1:'')}</span><span class="tick">✓</span></span>
+      <span class="clip-body"><span class="clip-name">${esc(c.name)}</span>
+      <span class="clip-dur">${Math.round(c.duration)}s</span></span>`;
+    if(editing) b.querySelector('.badge').style.cssText='opacity:1;transform:scale(1);background:var(--bad);color:#fff';
+    b.onclick = ()=> editing ? removeClip(c) : toggle(c);
+    g.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'addtile';
+  add.innerHTML = '<span><b>+</b>Add clips<br><span style="font-size:12px;color:var(--faint)">from your photos</span></span>';
+  add.onclick = ()=>document.getElementById('picker').click();
+  g.appendChild(add);
+  document.getElementById('editBtn').textContent = editing ? 'Done editing' : 'Edit clips';
+}
+function esc(s){ return String(s).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function toggle(c){
+  const i = queue.findIndex(q=>q.id===c.id);
+  if(i>=0) queue.splice(i,1); else queue.push(c);
+  renderGrid(); paintQueue();
+}
+async function removeClip(c){
+  if(!confirm('Remove "'+c.name+'" from the app? The video stays in your Photos.')) return;
+  await dbDel(c.id);
+  CLIPS = CLIPS.filter(x=>x.id!==c.id);
+  queue = queue.filter(x=>x.id!==c.id);
+  renderGrid(); paintQueue(); toast('Removed.');
+}
+function paintQueue(){
+  const bar = document.getElementById('queuebar');
+  bar.classList.toggle('up', queue.length>0 && !editing);
+  document.getElementById('qCount').textContent = `${queue.length} clip${queue.length===1?'':'s'} queued`;
+  document.getElementById('qMin').textContent = queue.length? `about ${mins(queue)} min` : '—';
+}
+
+/* ===================== import from Photos ===================== */
+document.getElementById('picker').onchange = async e=>{
+  const files = [...e.target.files];
+  e.target.value = '';
+  if(!files.length) return;
+  const sheet = document.getElementById('sheet');
+  sheet.classList.remove('hidden');
+  document.getElementById('sheetTitle').textContent = 'Adding to ' + CATS[curCat].name;
+  document.getElementById('sheetText').textContent = 'Each clip is copied into the app and given a thumbnail. Keep the screen on.';
+  let done = 0, failed = 0;
+  for(const f of files){
+    document.getElementById('sheetProg').textContent = `${done+1} of ${files.length} — ${f.name}`;
+    document.getElementById('sheetBar').style.width = (done/files.length*100).toFixed(0)+'%';
+    try{
+      const meta = await readVideo(f);
+      await dbPut({
+        id: 'c'+Date.now()+Math.random().toString(36).slice(2,7),
+        name: tidy(f.name), category: curCat, blob: f,
+        duration: meta.duration, poster: meta.poster, size: f.size, added: Date.now(), cue:''
+      });
+      done++;
+    }catch(err){ failed++; }
+  }
+  document.getElementById('sheetBar').style.width = '100%';
+  CLIPS = await dbAll();
+  renderGrid();
+  document.getElementById('sheetProg').textContent =
+    `${done} added${failed?`, ${failed} could not be read`:''}. They play with no signal from now on.`;
+  document.getElementById('sheetText').textContent = 'Done.';
+  if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
+};
+function tidy(n){
+  n = n.replace(/\.[A-Za-z0-9]+$/,'').replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
+  if(/^(IMG|VID|MOV|ScreenRecording)/i.test(n)) n = 'Clip ' + (CLIPS.length+1);
+  return n.slice(0,42);
+}
+function readVideo(file){
+  return new Promise((res,rej)=>{
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload='metadata'; v.muted=true; v.playsInline=true; v.src=url;
+    const fail = ()=>{ URL.revokeObjectURL(url); rej(new Error('unreadable')); };
+    v.onerror = fail;
+    setTimeout(()=>{ if(!v.videoWidth) fail(); }, 15000);
+    v.onloadedmetadata = ()=>{
+      const dur = isFinite(v.duration) ? v.duration : 30;
+      v.currentTime = Math.min(Math.max(0.3, dur*0.15), Math.max(0.3,dur-0.1));
+      v.onseeked = ()=>{
+        let poster = '';
+        try{
+          const side = 320, c = document.createElement('canvas');
+          c.width = side; c.height = side;
+          const g = c.getContext('2d');
+          const s = Math.min(v.videoWidth, v.videoHeight);
+          g.drawImage(v, (v.videoWidth-s)/2, (v.videoHeight-s)/2, s, s, 0, 0, side, side);
+          poster = c.toDataURL('image/jpeg', 0.72);
+        }catch(e){}
+        URL.revokeObjectURL(url);
+        res({duration: Math.round(dur*10)/10, poster});
+      };
+    };
+  });
+}
+
+/* ===================== player ===================== */
+let wake = null;
+async function keepAwake(on){
+  try{
+    if(on && 'wakeLock' in navigator && !wake) wake = await navigator.wakeLock.request('screen');
+    if(!on && wake){ wake.release(); wake=null; }
+  }catch(e){}
+}
+function startSession(){
+  if(!queue.length) return;
+  document.getElementById('player').classList.remove('hidden');
+  keepAwake(true); playAt(0);
+}
+function playAt(i){
+  pIdx = i;
+  const c = queue[i], v = document.getElementById('vid');
+  if(curURL) URL.revokeObjectURL(curURL);
+  curURL = URL.createObjectURL(c.blob);
+  v.src = curURL; v.loop = true; v.muted = false;
+  v.play().catch(()=>{ v.muted = true; v.play().catch(()=>{}); });
+  document.getElementById('pPos').textContent = `${i+1} of ${queue.length}`;
+  document.getElementById('pName').textContent = c.name;
+  document.getElementById('pCue').textContent = c.cue || '';
+  document.getElementById('pNext').textContent = (i===queue.length-1) ? 'Finish ✓' : 'Done ›';
+  document.getElementById('pPrev').style.visibility = i===0 ? 'hidden' : 'visible';
+}
+function nextClip(){ if(pIdx >= queue.length-1) finish(); else playAt(pIdx+1); }
+function closePlayer(finished){
+  const v = document.getElementById('vid'); v.pause(); v.removeAttribute('src'); v.load();
+  if(curURL){ URL.revokeObjectURL(curURL); curURL = null; }
+  document.getElementById('player').classList.add('hidden');
+  keepAwake(false);
+  if(!finished) toast("Left early — today doesn't count yet.");
+}
+function finish(){
+  const d = today(), prev = S.sessions[d];
+  const ids = [...new Set([...(prev?prev.ids:[]), ...queue.map(c=>c.id)])];
+  const cats = [...new Set([...(prev?prev.cats:[]), ...queue.map(c=>c.category)])];
+  S.sessions[d] = {clips:ids.length, mins:(prev?prev.mins:0)+mins(queue), cats, ids, at:Date.now()};
+  save(); relay(S.sessions[d]); closePlayer(true);
+  queue = []; paintQueue(); goHome();
+  const n = streak();
+  toast(n>1 ? `Done. ${n} days in a row.` : 'Done. Streak started.');
+}
+
+/* ===================== relay (added in phase 4) ===================== */
+const RELAY_URL = '';
+function relay(sess){
+  if(!RELAY_URL) return;
+  S.pending.push({item:'Morning movement', area:'Routine', source:'Move app', date:today(),
+    did:`${sess.cats.map(c=>CATS[c]?CATS[c].name:c).join(' and ')}, ${sess.clips} clips, ${sess.mins} min`});
+  save(); flush();
+}
+function flush(){
+  if(!RELAY_URL || !S.pending.length || !navigator.onLine) return;
+  const batch = S.pending.slice();
+  fetch(RELAY_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(batch)})
+    .then(r=>{ if(r.ok){ S.pending = S.pending.slice(batch.length); save(); } }).catch(()=>{});
+}
+window.addEventListener('online', flush);
+
+/* ===================== boot ===================== */
+function toast(msg){
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+document.getElementById('backBtn').onclick = goHome;
+document.getElementById('startBtn').onclick = startSession;
+document.getElementById('pNext').onclick = nextClip;
+document.getElementById('pPrev').onclick = ()=>playAt(Math.max(0,pIdx-1));
+document.getElementById('pClose').onclick = ()=>closePlayer(false);
+document.getElementById('sheetClose').onclick = ()=>document.getElementById('sheet').classList.add('hidden');
+document.getElementById('editBtn').onclick = ()=>{ editing=!editing; renderGrid(); paintQueue(); };
+
+if('serviceWorker' in navigator && location.protocol === 'https:'){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+dbAll().then(list=>{ CLIPS = list; paintStreak(); renderHome(); flush(); })
+       .catch(()=>{ paintStreak(); renderHome(); toast('Storage unavailable on this browser.'); });
+</script>
+</body>
+</html>
