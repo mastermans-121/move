@@ -202,7 +202,7 @@ h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
 
 <div class="player hidden" id="player">
   <div class="p-video">
-    <video id="vid" playsinline webkit-playsinline loop></video>
+    <video id="vid" playsinline webkit-playsinline loop muted defaultMuted disableRemotePlayback></video>
     <div class="p-top">
       <span class="p-pos" id="pPos"></span>
       <button class="p-x" id="pClose">Close</button>
@@ -522,8 +522,8 @@ function playAt(i){
   const c = queue[i], v = document.getElementById('vid');
   if(curURL) URL.revokeObjectURL(curURL);
   curURL = URL.createObjectURL(c.blob);
-  v.src = curURL; v.loop = true; v.muted = false;
-  v.play().catch(()=>{ v.muted = true; v.play().catch(()=>{}); });
+  v.src = curURL; v.loop = true; v.muted = true; v.volume = 0; v.setAttribute("muted","");
+  v.play().catch(()=>{});
   document.getElementById('pPos').textContent = `${i+1} of ${queue.length}`;
   document.getElementById('pName').textContent = c.name;
   document.getElementById('pCue').textContent = c.cue || '';
