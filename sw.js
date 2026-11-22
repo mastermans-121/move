@@ -1,5 +1,5 @@
 /* Move - offline shell. Videos live in IndexedDB, not here. */
-const CACHE = 'move-shell-v3';
+const CACHE = 'move-shell-v4';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

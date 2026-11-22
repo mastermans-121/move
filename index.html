@@ -389,7 +389,9 @@ async function renderDiag(){
        using ${gb(usage)} of about ${gb(quota)} available` : '<br>storage size unknown on this browser') +
     `<br>home screen app: <span class="${standalone?'ok':'no'}">${standalone?'yes':'no — open from the home screen icon'}</span>` +
     `<br>storage protected from cleanup: <span class="${persisted?'ok':'no'}">${persisted===null?'unknown':(persisted?'yes':'not yet')}</span>` +
-    (CLIPS.length ? `<div class="rowbtns"><button class="btn sm ghost" id="protectBtn">Ask iOS to protect it</button></div>` : '');
+    (CLIPS.length ? `<div class="rowbtns"><button class="btn sm ghost" id="protectBtn">Ask iOS to protect it</button><button class="btn sm ghost" id="thumbBtn">Rebuild thumbnails</button></div>` : '');
+  const tb = document.getElementById('thumbBtn');
+  if(tb) tb.onclick = ()=>rebuildThumbs(false, true);
   const pb = document.getElementById('protectBtn');
   if(pb) pb.onclick = async ()=>{
     try{ const ok = await navigator.storage.persist();
@@ -549,7 +551,6 @@ function probeVideo(file){
     if(!file || !file.size){ out.note = 'empty file (still in iCloud?)'; return resolve(out); }
     let url;
     try{ url = URL.createObjectURL(file); }catch(e){ out.note='could not open'; return resolve(out); }
-
     const v = document.createElement('video');
     v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline','');
     v.setAttribute('muted',''); v.muted = true; v.defaultMuted = true;
@@ -557,7 +558,6 @@ function probeVideo(file){
     // iOS will not load a detached element, and display:none counts as detached
     v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none';
     document.body.appendChild(v);
-
     let settled = false;
     const finish = note => {
       if(settled) return; settled = true;
@@ -568,45 +568,102 @@ function probeVideo(file){
       URL.revokeObjectURL(url);
       resolve(out);
     };
-
-    const grab = note => {
+    const side = 320, cv = document.createElement('canvas');
+    cv.width = side; cv.height = side;
+    const g = cv.getContext('2d', {willReadFrequently:true});
+    // iOS often hands back a black frame until the video has actually been played,
+    // so a draw only counts once the frame has real light in it.
+    const tryDraw = force => {
+      const w = v.videoWidth, h = v.videoHeight;
+      if(!w || !h) return false;
       try{
-        const w = v.videoWidth, h = v.videoHeight;
-        if(!w || !h) return finish(note || 'no frame available');
-        const side = 320, c = document.createElement('canvas');
-        c.width = side; c.height = side;
-        const g = c.getContext('2d');
         const sq = Math.min(w,h);
+        g.fillStyle = '#000'; g.fillRect(0,0,side,side);
         g.drawImage(v, (w-sq)/2, (h-sq)/2, sq, sq, 0, 0, side, side);
-        out.poster = c.toDataURL('image/jpeg', 0.72);
-        finish(note || '');
-      }catch(e){ finish('thumbnail blocked'); }
+        if(!force){
+          const d = g.getImageData(0,0,side,side).data;
+          let sum = 0, n = 0;
+          for(let i=0;i<d.length;i+=4*97){ sum += d[i]+d[i+1]+d[i+2]; n++; }
+          if(sum/n/3 < 6) return false;
+        }
+        out.poster = cv.toDataURL('image/jpeg', 0.72);
+        return true;
+      }catch(e){ out.note = 'thumbnail blocked'; return false; }
     };
-
     v.onerror = () => finish('cannot decode' + (v.error ? ' (code ' + v.error.code + ')' : ''));
     const metaTimer = setTimeout(()=>finish('timed out reading'), 25000);
-
     v.onloadedmetadata = () => {
       clearTimeout(metaTimer);
       out.duration = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration*10)/10 : 0;
-      const target = out.duration ? Math.min(Math.max(.2, out.duration*.15), Math.max(.2, out.duration-.15)) : .2;
-
-      // preferred path: seek to 15% and grab that frame
-      let seekTimer = setTimeout(()=>{
-        // fallback: nudge playback, which forces iOS to decode, then grab
-        const p = v.play();
-        if(p && p.catch) p.catch(()=>{});
-        setTimeout(()=>grab(out.poster ? '' : 'thumbnail from start'), 700);
-      }, 4000);
-
-      v.onseeked = () => { clearTimeout(seekTimer); grab(''); };
-      try{ v.currentTime = target; }catch(e){ clearTimeout(seekTimer); grab('could not seek'); }
+      const target = out.duration ? Math.max(.2, Math.min(4, out.duration-.3)) : .2;
+      let tries = 0, started = false;
+      const attempt = () => {
+        if(settled) return;
+        tries++;
+        if(tryDraw(false)) return finish('');
+        if(tries >= 8){
+          if(tryDraw(true)) return finish('thumbnail is dark');
+          return finish('no frame available');
+        }
+        setTimeout(attempt, 350);
+      };
+      const kick = () => {
+        if(started) return; started = true;
+        // playing muted forces iOS to decode and paint a real frame
+        const p = v.play(); if(p && p.catch) p.catch(()=>{});
+        if(typeof v.requestVideoFrameCallback === 'function'){
+          try{ v.requestVideoFrameCallback(()=>setTimeout(attempt, 80)); }catch(e){}
+          setTimeout(attempt, 1500);
+        } else setTimeout(attempt, 600);
+      };
+      const seekTimer = setTimeout(kick, 3000);
+      v.onseeked = () => { clearTimeout(seekTimer); kick(); };
+      try{ v.currentTime = target; }catch(e){ clearTimeout(seekTimer); kick(); }
     };
-
     try{ v.src = url; v.load(); }catch(e){ finish('could not load'); }
   });
 }
-
+function posterIsBlank(src){
+  return new Promise(res=>{
+    if(!src) return res(true);
+    const im = new Image();
+    im.onload = ()=>{
+      try{
+        const c = document.createElement('canvas'); c.width = 24; c.height = 24;
+        const x = c.getContext('2d'); x.drawImage(im,0,0,24,24);
+        const d = x.getImageData(0,0,24,24).data; let sum = 0;
+        for(let i=0;i<d.length;i+=4) sum += d[i]+d[i+1]+d[i+2];
+        res(sum/(d.length/4)/3 < 6);
+      }catch(e){ res(false); }
+    };
+    im.onerror = ()=>res(true);
+    im.src = src;
+  });
+}
+let rebuilding = false;
+async function rebuildThumbs(quiet, all){
+  if(rebuilding) return; rebuilding = true;
+  try{
+    const todo = [];
+    for(const c of CLIPS){ if(c.blob && (all || await posterIsBlank(c.poster))) todo.push(c); }
+    if(!todo.length){ if(!quiet) toast('All thumbnails look fine.'); return; }
+    let ok = 0;
+    for(let i=0;i<todo.length;i++){
+      toast('Thumbnails ' + (i+1) + ' of ' + todo.length + '…');
+      let m = {};
+      try{ m = await probeVideo(todo[i].blob); }catch(e){}
+      if(m.poster){
+        todo[i].poster = m.poster;
+        if(!todo[i].duration && m.duration) todo[i].duration = m.duration;
+        try{ await dbPut(todo[i]); ok++; }catch(e){}
+        if(!document.getElementById('viewCat').classList.contains('hidden')) renderGrid();
+      }
+    }
+    CLIPS = await dbAll();
+    if(!document.getElementById('viewCat').classList.contains('hidden')) renderGrid();
+    toast(ok + ' of ' + todo.length + ' thumbnails rebuilt.');
+  } finally { rebuilding = false; }
+}
 /* ===================== player ===================== */
 let wake = null;
 async function keepAwake(on){
@@ -695,7 +752,7 @@ if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
-dbAll().then(list=>{ CLIPS = list; paintStreak(); renderHome(); flush(); })
+dbAll().then(list=>{ CLIPS = list; paintStreak(); renderHome(); flush(); setTimeout(()=>{ if(CLIPS.length){ let f=''; try{ f=localStorage.getItem('thumbs4s')||''; }catch(e){} rebuildThumbs(true, !f).then(()=>{ try{ localStorage.setItem('thumbs4s','1'); }catch(e){} }); } }, 2500); })
        .catch(()=>{ paintStreak(); renderHome(); toast('Storage unavailable on this browser.'); });
 </script>
 </body>
