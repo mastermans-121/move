@@ -146,6 +146,12 @@ h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
 .sheet h3{margin:0 0 4px;font-size:18px}
 .sheet p{margin:0 0 14px;color:var(--dim);font-size:13.5px}
 .prog{font-size:13px;color:var(--dim);margin-top:10px}
+.notes{white-space:pre-wrap;font:11.5px/1.5 ui-monospace,Menlo,monospace;color:var(--dim);
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;
+  max-height:160px;overflow:auto;margin:10px 0 0}
+.notes:empty{display:none}
+.ph{display:grid;place-items:center;width:100%;height:100%;
+  background:linear-gradient(145deg,#1d2128,#131519);color:var(--faint);font-size:11px;text-align:center;padding:8px}
 .rowbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .find{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:9px;
   padding:8px 12px;color:var(--text);font-size:13.5px;-webkit-appearance:none}
@@ -230,7 +236,11 @@ h2{font-size:19px;letter-spacing:-.3px;margin:26px 0 10px;font-weight:650}
     <p id="sheetText">Reading the videos you picked…</p>
     <div class="bar"><i id="sheetBar" style="width:0%"></i></div>
     <div class="prog" id="sheetProg"></div>
-    <div class="rowbtns"><button class="btn ghost sm" id="sheetClose">Close</button></div>
+    <pre class="notes" id="sheetNotes"></pre>
+    <div class="rowbtns">
+      <button class="btn ghost sm" id="sheetClose">Close</button>
+      <button class="btn ghost sm" id="copyNotes" style="display:none">Copy details</button>
+    </div>
   </div>
 </div>
 
@@ -417,10 +427,13 @@ function renderGrid(){
     const i = queue.findIndex(q=>q.id===c.id);
     const b = document.createElement('button');
     b.className = 'clip' + (i>=0?' on':'') + (doneIds.includes(c.id)?' didtoday':'');
-    b.innerHTML = `<span class="thumb"><img loading="lazy" src="${c.poster||''}" alt="">
+    const thumbInner = c.poster
+      ? `<img loading="lazy" src="${c.poster}" alt="">`
+      : `<span class="ph">no preview<br>tap to use</span>`;
+    b.innerHTML = `<span class="thumb">${thumbInner}
         <span class="badge">${editing?'✕':(i>=0?i+1:'')}</span><span class="tick">✓</span></span>
       <span class="clip-body"><span class="clip-name">${esc(c.name)}</span>
-      <span class="clip-dur">${Math.round(c.duration)}s</span></span>`;
+      <span class="clip-dur">${c.duration ? Math.round(c.duration)+'s' : '—'}</span></span>`;
     if(editing){
       const del = b.querySelector('.badge');
       del.textContent = '\u2715';
@@ -476,27 +489,44 @@ document.getElementById('picker').onchange = async e=>{
   const sheet = document.getElementById('sheet');
   sheet.classList.remove('hidden');
   document.getElementById('sheetTitle').textContent = 'Adding to ' + CATS[curCat].name;
-  document.getElementById('sheetText').textContent = 'Each clip is copied into the app and given a thumbnail. Keep the screen on.';
-  let done = 0, failed = 0;
-  for(const f of files){
-    document.getElementById('sheetProg').textContent = `${done+1} of ${files.length} — ${f.name}`;
-    document.getElementById('sheetBar').style.width = (done/files.length*100).toFixed(0)+'%';
+  document.getElementById('sheetText').textContent = 'Keep this screen on while they copy across.';
+  document.getElementById('sheetNotes').textContent = '';
+  let added = 0, failed = 0;
+  const notes = [];
+
+  for(let i=0;i<files.length;i++){
+    const f = files[i];
+    document.getElementById('sheetProg').textContent = `${i+1} of ${files.length} — ${f.name}`;
+    document.getElementById('sheetBar').style.width = (i/files.length*100).toFixed(0)+'%';
+    let meta = {duration:0, poster:'', note:''};
+    try{ meta = await probeVideo(f); }catch(err){ meta.note = 'probe threw: ' + (err && err.message); }
+    // a missing thumbnail must never stop the clip being saved
     try{
-      const meta = await readVideo(f);
       await dbPut({
-        id: 'c'+Date.now()+Math.random().toString(36).slice(2,7),
+        id: 'c' + Date.now() + Math.random().toString(36).slice(2,7),
         name: tidy(f.name), category: curCat, blob: f,
-        duration: meta.duration, poster: meta.poster, size: f.size, added: Date.now(), cue:''
+        duration: meta.duration || 0, poster: meta.poster || '',
+        size: f.size, added: Date.now(), cue: ''
       });
-      done++;
-    }catch(err){ failed++; }
+      added++;
+      if(meta.note) notes.push(f.name + ' — saved, but ' + meta.note);
+    }catch(err){
+      failed++;
+      notes.push(f.name + ' — NOT saved: ' + ((err && (err.name + ': ' + err.message)) || 'unknown'));
+    }
   }
+
   document.getElementById('sheetBar').style.width = '100%';
   CLIPS = await dbAll();
   renderGrid();
-  document.getElementById('sheetProg').textContent =
-    `${done} added${failed?`, ${failed} could not be read`:''}. They play with no signal from now on.`;
   document.getElementById('sheetText').textContent = 'Done.';
+  document.getElementById('sheetProg').textContent =
+    `${added} added${failed ? `, ${failed} could not be saved` : ''}.` +
+    (added ? ' They play with no signal from now on.' : '');
+  if(notes.length){
+    document.getElementById('sheetNotes').textContent = notes.slice(0,40).join('\n');
+    document.getElementById('copyNotes').style.display = 'inline-block';
+  }
   if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
 };
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -513,31 +543,67 @@ function tidy(n){
   if(/^(IMG|VID|MOV)/i.test(t)) t = 'Clip ' + (CLIPS.length+1);
   return t.slice(0,42);
 }
-function readVideo(file){
-  return new Promise((res,rej)=>{
-    const url = URL.createObjectURL(file);
+function probeVideo(file){
+  return new Promise(resolve=>{
+    const out = {duration:0, poster:'', note:''};
+    if(!file || !file.size){ out.note = 'empty file (still in iCloud?)'; return resolve(out); }
+    let url;
+    try{ url = URL.createObjectURL(file); }catch(e){ out.note='could not open'; return resolve(out); }
+
     const v = document.createElement('video');
-    v.preload='metadata'; v.muted=true; v.playsInline=true; v.src=url;
-    const fail = ()=>{ URL.revokeObjectURL(url); rej(new Error('unreadable')); };
-    v.onerror = fail;
-    setTimeout(()=>{ if(!v.videoWidth) fail(); }, 15000);
-    v.onloadedmetadata = ()=>{
-      const dur = isFinite(v.duration) ? v.duration : 30;
-      v.currentTime = Math.min(Math.max(0.3, dur*0.15), Math.max(0.3,dur-0.1));
-      v.onseeked = ()=>{
-        let poster = '';
-        try{
-          const side = 320, c = document.createElement('canvas');
-          c.width = side; c.height = side;
-          const g = c.getContext('2d');
-          const s = Math.min(v.videoWidth, v.videoHeight);
-          g.drawImage(v, (v.videoWidth-s)/2, (v.videoHeight-s)/2, s, s, 0, 0, side, side);
-          poster = c.toDataURL('image/jpeg', 0.72);
-        }catch(e){}
-        URL.revokeObjectURL(url);
-        res({duration: Math.round(dur*10)/10, poster});
-      };
+    v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline','');
+    v.setAttribute('muted',''); v.muted = true; v.defaultMuted = true;
+    v.preload = 'auto';
+    // iOS will not load a detached element, and display:none counts as detached
+    v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none';
+    document.body.appendChild(v);
+
+    let settled = false;
+    const finish = note => {
+      if(settled) return; settled = true;
+      if(note) out.note = note;
+      try{ v.pause(); }catch(e){}
+      try{ v.removeAttribute('src'); v.load(); }catch(e){}
+      try{ v.remove(); }catch(e){}
+      URL.revokeObjectURL(url);
+      resolve(out);
     };
+
+    const grab = note => {
+      try{
+        const w = v.videoWidth, h = v.videoHeight;
+        if(!w || !h) return finish(note || 'no frame available');
+        const side = 320, c = document.createElement('canvas');
+        c.width = side; c.height = side;
+        const g = c.getContext('2d');
+        const sq = Math.min(w,h);
+        g.drawImage(v, (w-sq)/2, (h-sq)/2, sq, sq, 0, 0, side, side);
+        out.poster = c.toDataURL('image/jpeg', 0.72);
+        finish(note || '');
+      }catch(e){ finish('thumbnail blocked'); }
+    };
+
+    v.onerror = () => finish('cannot decode' + (v.error ? ' (code ' + v.error.code + ')' : ''));
+    const metaTimer = setTimeout(()=>finish('timed out reading'), 25000);
+
+    v.onloadedmetadata = () => {
+      clearTimeout(metaTimer);
+      out.duration = (isFinite(v.duration) && v.duration > 0) ? Math.round(v.duration*10)/10 : 0;
+      const target = out.duration ? Math.min(Math.max(.2, out.duration*.15), Math.max(.2, out.duration-.15)) : .2;
+
+      // preferred path: seek to 15% and grab that frame
+      let seekTimer = setTimeout(()=>{
+        // fallback: nudge playback, which forces iOS to decode, then grab
+        const p = v.play();
+        if(p && p.catch) p.catch(()=>{});
+        setTimeout(()=>grab(out.poster ? '' : 'thumbnail from start'), 700);
+      }, 4000);
+
+      v.onseeked = () => { clearTimeout(seekTimer); grab(''); };
+      try{ v.currentTime = target; }catch(e){ clearTimeout(seekTimer); grab('could not seek'); }
+    };
+
+    try{ v.src = url; v.load(); }catch(e){ finish('could not load'); }
   });
 }
 
@@ -615,6 +681,15 @@ document.getElementById('pClose').onclick = ()=>closePlayer(false);
 document.getElementById('sheetClose').onclick = ()=>document.getElementById('sheet').classList.add('hidden');
 document.getElementById('editBtn').onclick = ()=>{ editing=!editing; renderGrid(); paintQueue(); };
 document.getElementById('find').oninput = ()=>renderGrid();
+document.getElementById('copyNotes').onclick = async ()=>{
+  const t = document.getElementById('sheetNotes').textContent;
+  try{ await navigator.clipboard.writeText(t); toast('Copied. Paste it to Claude.'); }
+  catch(e){
+    const r = document.createRange(); r.selectNodeContents(document.getElementById('sheetNotes'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    toast('Selected — press Copy.');
+  }
+};
 
 if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
